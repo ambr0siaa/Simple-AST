@@ -1,149 +1,9 @@
+#define SV_IMPLEMENTAION
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <ctype.h>
-#include <string.h>
 
-#define NONE_OPERATOR 'N'
-#define PLUS_OPERATOR '+'
-#define MINUS_OPERATOR '-'
-#define MULT_OPERATOR '*'
-#define DIV_OPERATOR '/'
-
-typedef struct {
-    char *data;
-    int count;
-} String_View;
-
-#define SV_Fmt "%.*s"
-#define SV_Args(sv) (int) (sv).count, (sv).data
-
-String_View sv_from_cstr(char *cstr)
-{
-    return (String_View) {
-        .count = strlen(cstr),
-        .data = cstr
-    };
-}
-
-String_View sv_trim_left(String_View sv)
-{
-    size_t i = 0;
-    while (i < sv.count && isspace(sv.data[i])) {
-        i += 1;
-    }
-
-    return (String_View) {
-        .count = sv.count - i,
-        .data = sv.data + i
-    };
-}
-
-String_View sv_trim_right(String_View sv)
-{
-    size_t i = 0;
-    while (i < sv.count && isspace(sv.data[sv.count - i - 1])) {
-        i += 1;
-    }
-
-    return (String_View) {
-        .count = sv.count - i,
-        .data = sv.data
-    };
-}
-
-String_View sv_trim(String_View sv)
-{
-    return sv_trim_right(sv_trim_left(sv));
-}
-
-String_View sv_div_by_delim(String_View *sv, char delim)
-{
-    size_t i = 0;
-    while (i < sv->count && sv->data[i] != delim) {
-        i += 1;
-    }
-
-    String_View result = {
-        .count = i,
-        .data = sv->data
-    };
-
-    if (i < sv->count) {
-        sv->count -= i + 1;
-        sv->data += i + 1;
-    } else {
-        sv->count -= i;
-        sv->data += i;
-    }
-
-    return result;
-}
-
-int sv_cmp(String_View sv1, String_View sv2)
-{
-    if (sv1.count != sv2.count) {
-        return 0;
-    } else {
-        return memcmp(sv1.data, sv2.data, sv1.count) == 0;
-    }
-}
-
-int sv_to_int(String_View sv)
-{
-    int result = 0;
-    for (size_t i = 0; i < sv.count && isdigit(sv.data[i]); ++i) {
-        result = result * 10 + sv.data[i] - '0'; 
-    }
-    
-    return result;
-}
-
-int sv_is_float(String_View sv)
-{
-    int res = 0;
-    for (size_t i = 0; i < sv.count; ++i) {
-        if (sv.data[i] == '.') {
-            res = 1;
-            break;
-        }
-    }
-    return res;
-}
-
-String_View sv_div_by_next_symbol(String_View *sv)
-{
-    String_View result;
-
-    size_t i = 0;
-    size_t count = 0;
-    while (i < sv->count) {
-        if (!isspace(sv->data[i])) {
-            count++;
-        }
-
-        if (count == 2) { 
-            break;
-        }
-
-        ++i;
-    }
-
-    if (i == 1) result.count = i;
-    else result.count = (i - 1); 
-
-    result.data = sv->data;
-    
-    if (i < sv->count) {
-        sv->count -= (i - 1);
-        sv->data += i;
-    } else {
-        sv->count -= i;
-        sv->data += i;
-    }
-
-    return result;
-}
+#include "./sv.h"
 
 typedef struct {
     char operator;
@@ -151,24 +11,13 @@ typedef struct {
 } Operator;
 
 typedef union {
-    int INT;
+    int64_t INT;
     double FLOAT;
     Operator OPR;
 } Object;
 
 #define OBJ_INT(val) (Object) { .INT = (val) }
 #define OBJ_FLOAT(val) (Object) { .FLOAT = (val) }
-
-typedef struct ast_node {
-    int value;
-    struct ast_node *left_operand; 
-    struct ast_node *right_operand; 
-} Ast_Node;
-
-typedef struct {
-    Ast_Node *root;
-    size_t count;
-} Ast_Tree;
 
 typedef enum {
     TYPE_INT = 0,
@@ -178,12 +27,6 @@ typedef enum {
     TYPE_CLOSE_BRACKET
 } Token_Type;
 
-// mark:
-//  0 - none
-//  1 - int
-//  2 - float
-//  3 - operator
-//  4 - open
 typedef struct {
     Token_Type type;
     Object value;
@@ -196,6 +39,17 @@ typedef struct {
     size_t capacity;
     size_t count;
 } Expresion;
+
+typedef struct ast_node {
+    Token token;
+    struct ast_node *left_operand; 
+    struct ast_node *right_operand; 
+} Ast_Node;
+
+typedef struct {
+    Ast_Node *root;
+    size_t count;
+} Ast_Tree;
 
 void token_push(Expresion *expr, Token tk)
 {
@@ -212,11 +66,36 @@ void token_push(Expresion *expr, Token tk)
     expr->tokens[expr->count++] = tk;
 }
 
-Token token_pop(Expresion *expr)
+void expr_clean(Expresion *expr)
 {
-    if (expr->count > 0) {
-        Token tk = expr->tokens[--expr->count];
-        return tk;
+    free(expr->tokens);
+    expr->count = 0;
+    expr->capacity = 0;
+}
+
+void print_expr(Expresion *expr)
+{
+    for (size_t i = 0; i < expr->count; ++i) {
+        switch (expr->tokens[i].type) {
+        case TYPE_INT:
+            printf("int: `%ld`\n", expr->tokens[i].value.INT);
+            break;
+        case TYPE_FLOAT:
+            printf("float: `%lf`\n", expr->tokens[i].value.FLOAT);
+            break;
+        case TYPE_OPERATOR:
+            printf("operator: `%c`, priority: %d\n", expr->tokens[i].value.OPR.operator, expr->tokens[i].value.OPR.priority);
+            break;
+        case TYPE_OPEN_BRACKET:
+            printf("open bracket: `%c`\n", expr->tokens[i].value.OPR.operator);
+            break;
+        case TYPE_CLOSE_BRACKET:
+            printf("close bracket: `%c`\n", expr->tokens[i].value.OPR.operator);
+            break;
+        default:
+            fprintf(stderr, "Error: unknown type `%u`\n", expr->tokens[i].type);
+            exit(1);
+        }
     }
 }
 
@@ -232,16 +111,15 @@ String_View separate_by_operator(String_View *sv)
             sv->data[i] == '*' ||
             sv->data[i] == '/' ||
             sv->data[i] == ')' ||
-            sv->data[i] == '('  ) {
-                brk = 1;
-        }
+            sv->data[i] == '('  ) 
+            brk = 1;
         
         if (brk) break;
         i += 1;
     }
 
     if (i == 1) result.count = i;
-    else result.count = i - 1; 
+    else result.count = i; 
     result.data = sv->data;
     
     if (i < sv->count) {
@@ -282,50 +160,38 @@ Object parse_value(String_View sv, int value_kind)
         return OBJ_FLOAT(d);
 
     } else {
-        // TODO: parse int
-        uint64_t INT = sv_to_int(sv);
-        return OBJ_INT(INT);
-    }
-}
+        int temp = 0;
+        int i = 0;
+        int sign = 0;
+        if (sv.data[0] == '-') {
+            sign = 1;
+            i++;
+        }
+        while (i < sv.count) {
+            temp = temp + (sv.data[i] & 0x0F);
+            temp = temp * 10;
+            i++;
+        }
 
-void sv_cut_space_left(String_View *sv)
-{
-    size_t i = 0;
-    while(i < sv->count && isspace(sv->data[i])) {
-        ++i;
-    }
+        temp = temp / 10;
+        if (sign == 1) temp = -temp;
 
-    if (i != sv->count) {
-        int t = i - 1;
-        sv->count -= t;
-        sv->data += i;
+        return OBJ_INT(temp);
     }
-}
-
-void sv_cut_space_right(String_View *sv)
-{
-    size_t i = 0;
-    while(i < sv->count && isspace(sv->data[sv->count - i])) {
-        ++i;
-    }
-
-    if (i != sv->count) {
-        int t = i - 1;
-        sv->count -= t;
-    }
-}
-
-void sv_cut_space(String_View *sv) 
-{
-    sv_cut_space_left(sv);
-    sv_cut_space_right(sv);
 }
 
 Expresion separate_src_by_tokens(String_View src)
 {
     Expresion expr = {0};
-    String_View src_trimed = sv_trim(src);
-    while (src_trimed.count > 0 && (int*)(src_trimed.data[0]) != NULL) {
+
+    String_View src_sv = sv_trim(src);
+    String_View src_trimed = { .count = src_sv.count }; 
+    src_trimed.data = malloc((sizeof(src_sv.data[0]) * src_sv.count) + 2);
+
+    memcpy(src_trimed.data, src_sv.data, src_trimed.count);
+    memset(src_trimed.data + src_sv.count, '\0', sizeof('\0'));
+
+    while (src_trimed.count > 0 && src_trimed.data[0] != '\0') {
         Token tk;
         if (isdigit(src_trimed.data[0])) {
             String_View value = sv_trim(separate_by_operator(&src_trimed));
@@ -368,32 +234,6 @@ Expresion separate_src_by_tokens(String_View src)
     return expr;
 }
 
-void print_expr(Expresion *expr)
-{
-    for (size_t i = 0; i < expr->count; ++i) {
-        switch (expr->tokens[i].type) {
-        case TYPE_INT:
-            printf("int: `%d`\n", expr->tokens[i].value.INT);
-            break;
-        case TYPE_FLOAT:
-            printf("float: `%lf`\n", expr->tokens[i].value.FLOAT);
-            break;
-        case TYPE_OPERATOR:
-            printf("operator: `%c`, priority: %d\n", expr->tokens[i].value.OPR.operator, expr->tokens[i].value.OPR.priority);
-            break;
-        case TYPE_OPEN_BRACKET:
-            printf("open bracket: `%c`\n", expr->tokens[i].value.OPR.operator);
-            break;
-        case TYPE_CLOSE_BRACKET:
-            printf("close bracket: `%c`\n", expr->tokens[i].value.OPR.operator);
-            break;
-        default:
-            fprintf(stderr, "Error: unknown type `%u`\n", expr->tokens[i].type);
-            exit(1);
-        }
-    }
-}
-
 void set_priorities(Expresion *expr)
 {
     size_t bracket_count = 0;
@@ -403,27 +243,31 @@ void set_priorities(Expresion *expr)
             bracket_count += 1;           
         } else if (expr->tokens[i].type == TYPE_OPERATOR) {
             switch (expr->tokens[i].value.OPR.operator) {
-            case '+':
-                expr->tokens[i].value.OPR.priority = 0;
-                break;
-            case '-':
-                expr->tokens[i].value.OPR.priority = 0;
-                break;
-            case '*':
-                expr->tokens[i].value.OPR.priority = 1;
-                break;
-            case '/':
-                expr->tokens[i].value.OPR.priority = 1;
-                break;
+                case '+':
+                    expr->tokens[i].value.OPR.priority = 0;
+                    break;
+                case '-':
+                    expr->tokens[i].value.OPR.priority = 0;
+                    break;
+                case '*':
+                    expr->tokens[i].value.OPR.priority = 1;
+                    break;
+                case '/':
+                    expr->tokens[i].value.OPR.priority = 1;
+                    break;
+                default:
+                    fprintf(stderr, "Error: unknown operator `%c`\n",
+                            expr->tokens[i].value.OPR.operator);
+                    break;
             }
             opr_count += 1;
-            if (bracket_count > 0) expr->tokens[i].value.OPR.priority += bracket_count + opr_count;
+            if (bracket_count > 0) 
+                expr->tokens[i].value.OPR.priority += bracket_count + opr_count;
         } else if (expr->tokens[i].type == TYPE_CLOSE_BRACKET) {
             bracket_count -= 1;
             if (opr_count > 0) opr_count -= 1; 
-        } else {
-            continue;
-        }
+        } 
+        else continue;
     }
 
     if (bracket_count != 0) {
@@ -432,15 +276,95 @@ void set_priorities(Expresion *expr)
     }
 }
 
+Ast_Node *ast_node_push(Ast_Node *node, Token tk)
+{
+    if (tk.type == TYPE_CLOSE_BRACKET || tk.type == TYPE_OPEN_BRACKET) {
+        return node;
+    }
+
+    if (node == NULL) {
+        node = malloc(sizeof(Ast_Node));
+        node->token = tk; 
+    } else {
+        if (tk.type == TYPE_OPERATOR) {
+            if (node->token.type == TYPE_INT || node->token.type == TYPE_FLOAT) {
+                Token copy = node->token;
+                node->token = tk;
+
+                if (node->left_operand != NULL) node->right_operand = ast_node_push(node->right_operand, copy);
+                else node->left_operand = ast_node_push(node->left_operand, copy);
+
+            } else if (node->token.type == TYPE_OPERATOR) {
+                if (node->token.value.OPR.priority > tk.value.OPR.priority) {
+                    Ast_Node *new_node = malloc(sizeof(Ast_Node));
+                    new_node->token = tk;
+                    
+                    if (new_node->left_operand != NULL) new_node->right_operand = node;        
+                    else new_node->left_operand = node;
+                    
+                    return new_node;
+                } else {
+                    node->right_operand = ast_node_push(node->right_operand, tk);
+                }
+            }
+        } else if (tk.type == TYPE_INT || tk.type == TYPE_FLOAT) {
+            if (node->left_operand != NULL) node->right_operand = ast_node_push(node->right_operand, tk);
+            else node->left_operand = ast_node_push(node->left_operand, tk);
+        }
+    }
+    return node;
+}
+
+void ast_tree_push(Ast_Tree *ast, Token tk)
+{
+    ast->root = ast_node_push(ast->root, tk);
+    ast->count += 1;
+}
+
+void generate_tree(Ast_Tree *ast, Expresion *expr)
+{
+    for (size_t i = 0; i < expr->count; ++i) 
+        ast_tree_push(ast, expr->tokens[i]);
+}
+
+void print_tree(Ast_Node *node)
+{
+    if (!node) return;
+    print_tree(node->left_operand);
+    switch (node->token.type) {
+        case TYPE_INT:
+            printf("value: %ld\n", node->token.value.INT);
+            break;
+        case TYPE_FLOAT:
+            printf("value: %lf\n", node->token.value.FLOAT);
+            break;
+        case TYPE_OPERATOR:
+            printf("opr: %c, pr: %d\n",
+                    node->token.value.OPR.operator, 
+                    node->token.value.OPR.priority);
+            break;
+        default:
+            break;
+    }
+    print_tree(node->right_operand);
+}
+
 int main(void)
 {
-    String_View sv = sv_from_cstr("((1 + 2) * 2) * 5 + (5 * (5 + 1))");
-    Expresion expr = separate_src_by_tokens(sv);
-    print_expr(&expr);
+    Ast_Tree ast = {0};
+    
+    Expresion expr = separate_src_by_tokens(sv_from_cstr (
+        "(12831+12314)*(198*12387)/(745344-643546)"
+    ));
+
     set_priorities(&expr);
 
+    print_expr(&expr); 
     printf("\n---------------------------------\n\n");
 
-    print_expr(&expr);    
+    generate_tree(&ast, &expr);
+    print_tree(ast.root);
+
+    expr_clean(&expr);   
     return 0;
 }
