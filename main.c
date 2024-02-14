@@ -49,7 +49,7 @@ typedef struct ast_node {
 typedef struct {
     Ast_Node *root;
     size_t count;
-} Ast_Tree;
+} Ast;
 
 void token_push(Expresion *expr, Token tk)
 {
@@ -84,7 +84,9 @@ void print_expr(Expresion *expr)
             printf("float: `%lf`\n", expr->tokens[i].value.FLOAT);
             break;
         case TYPE_OPERATOR:
-            printf("operator: `%c`, priority: %d\n", expr->tokens[i].value.OPR.operator, expr->tokens[i].value.OPR.priority);
+            printf("operator: `%c`, priority: %d\n", 
+                    expr->tokens[i].value.OPR.operator, 
+                    expr->tokens[i].value.OPR.priority);
             break;
         case TYPE_OPEN_BRACKET:
             printf("open bracket: `%c`\n", expr->tokens[i].value.OPR.operator);
@@ -160,36 +162,15 @@ Object parse_value(String_View sv, int value_kind)
         return OBJ_FLOAT(d);
 
     } else {
-        int temp = 0;
-        int i = 0;
-        int sign = 0;
-        if (sv.data[0] == '-') {
-            sign = 1;
-            i++;
-        }
-        while (i < sv.count) {
-            temp = temp + (sv.data[i] & 0x0F);
-            temp = temp * 10;
-            i++;
-        }
-
-        temp = temp / 10;
-        if (sign == 1) temp = -temp;
-
-        return OBJ_INT(temp);
+        int64_t value = sv_to_int(sv);
+        return OBJ_INT(value);
     }
 }
 
 Expresion separate_src_by_tokens(String_View src)
 {
     Expresion expr = {0};
-
-    String_View src_sv = sv_trim(src);
-    String_View src_trimed = { .count = src_sv.count }; 
-    src_trimed.data = malloc((sizeof(src_sv.data[0]) * src_sv.count) + 2);
-
-    memcpy(src_trimed.data, src_sv.data, src_trimed.count);
-    memset(src_trimed.data + src_sv.count, '\0', sizeof('\0'));
+    String_View src_trimed = sv_trim(src);
 
     while (src_trimed.count > 0 && src_trimed.data[0] != '\0') {
         Token tk;
@@ -205,24 +186,12 @@ Expresion separate_src_by_tokens(String_View src)
         } else {
             String_View opr = sv_trim(sv_div_by_next_symbol(&src_trimed));
             switch (opr.data[0]) {
-                case '(':
-                    tk.type = TYPE_OPEN_BRACKET;
-                    break;
-                case ')':
-                    tk.type = TYPE_CLOSE_BRACKET;
-                    break;
-                case '+':
-                    tk.type = TYPE_OPERATOR;
-                    break;
-                case '*':
-                    tk.type = TYPE_OPERATOR;
-                    break;
-                case '-':
-                    tk.type = TYPE_OPERATOR;
-                    break;
-                case '/':
-                    tk.type = TYPE_OPERATOR;
-                    break;
+                case '(': tk.type = TYPE_OPEN_BRACKET;  break;
+                case ')': tk.type = TYPE_CLOSE_BRACKET; break;
+                case '+': tk.type = TYPE_OPERATOR;      break;
+                case '*': tk.type = TYPE_OPERATOR;      break;
+                case '-': tk.type = TYPE_OPERATOR;      break;
+                case '/': tk.type = TYPE_OPERATOR;      break;
                 default:
                     fprintf(stderr, "Error: unknown operator `%c`\n", opr.data[0]);
                     exit(1);
@@ -234,40 +203,71 @@ Expresion separate_src_by_tokens(String_View src)
     return expr;
 }
 
+
+// TODO: remake set_priorities
 void set_priorities(Expresion *expr)
 {
     size_t bracket_count = 0;
     size_t opr_count = 0;
-    for (size_t i = 0; i < expr->count; ++i) {
-        if (expr->tokens[i].type == TYPE_OPEN_BRACKET) {
+    size_t zero_priority_count = 0;
+    
+    Operator *prev;
+    Operator *cur;
+
+    for (int i = expr->count; i >= 0; --i) {
+        if (expr->tokens[i].type == TYPE_CLOSE_BRACKET) {
             bracket_count += 1;           
         } else if (expr->tokens[i].type == TYPE_OPERATOR) {
+            prev = cur;
+            
             switch (expr->tokens[i].value.OPR.operator) {
-                case '+':
-                    expr->tokens[i].value.OPR.priority = 0;
-                    break;
-                case '-':
-                    expr->tokens[i].value.OPR.priority = 0;
-                    break;
-                case '*':
-                    expr->tokens[i].value.OPR.priority = 1;
-                    break;
-                case '/':
-                    expr->tokens[i].value.OPR.priority = 1;
-                    break;
+                case '+': expr->tokens[i].value.OPR.priority = 0; 
+                        if (bracket_count == 0) {
+                            expr->tokens[i].value.OPR.priority += zero_priority_count;
+                            zero_priority_count++;
+                        }
+                        break;
+                case '-': expr->tokens[i].value.OPR.priority = 0;
+                        if (bracket_count == 0) {
+                            expr->tokens[i].value.OPR.priority += zero_priority_count;
+                            zero_priority_count++;
+                        }
+                        break;
+                case '*': expr->tokens[i].value.OPR.priority = 1; 
+                          opr_count -= 1; break;
+                case '/': expr->tokens[i].value.OPR.priority = 1; 
+                          opr_count -= 1; break;
                 default:
-                    fprintf(stderr, "Error: unknown operator `%c`\n",
+                    fprintf(stderr, "Error: unknown operator `%c`. exit with 1\n",
                             expr->tokens[i].value.OPR.operator);
                     break;
             }
             opr_count += 1;
-            if (bracket_count > 0) 
-                expr->tokens[i].value.OPR.priority += bracket_count + opr_count;
-        } else if (expr->tokens[i].type == TYPE_CLOSE_BRACKET) {
+            if (bracket_count > 0) expr->tokens[i].value.OPR.priority += bracket_count + opr_count;
+
+            cur = &expr->tokens[i].value.OPR;
+
+            if (bracket_count == 0 ) {
+                if ((cur->operator == '+' || cur->operator == '-') && 
+                    (prev->operator == '*' || prev->operator == '/')) {
+                    if (cur->priority >= prev->priority) {
+                        prev->priority += cur->priority;
+                    }      
+                } else if ((prev->operator == '+' || prev->operator == '-') && 
+                            (cur->operator == '*' || cur->operator == '/')) {
+                    if (cur->priority <= prev->priority) {
+                        cur->priority += prev->priority;
+                    }
+                } else if (cur->operator == '*' || cur->operator == '/' &&
+                           prev->operator == '*' || prev->operator == '/') {
+                    if (cur->priority <= prev->priority) {
+                        cur->priority += prev->priority + 1;
+                    }
+                }
+            } 
+
+        } else if (expr->tokens[i].type == TYPE_OPEN_BRACKET) 
             bracket_count -= 1;
-            if (opr_count > 0) opr_count -= 1; 
-        } 
-        else continue;
     }
 
     if (bracket_count != 0) {
@@ -315,56 +315,144 @@ Ast_Node *ast_node_push(Ast_Node *node, Token tk)
     return node;
 }
 
-void ast_tree_push(Ast_Tree *ast, Token tk)
+void Ast_push(Ast *ast, Token tk)
 {
     ast->root = ast_node_push(ast->root, tk);
     ast->count += 1;
 }
 
-void generate_tree(Ast_Tree *ast, Expresion *expr)
+void generate_tree(Ast *ast, Expresion *expr)
 {
     for (size_t i = 0; i < expr->count; ++i) 
-        ast_tree_push(ast, expr->tokens[i]);
+        Ast_push(ast, expr->tokens[i]);
 }
+
+#define TAB(iter) ({                    \
+    for (int j = 0; j < (iter); ++j) {  \
+        printf(" ");                    \
+    }                                   \
+    (iter)++;                           \
+})                                     
 
 void print_tree(Ast_Node *node)
 {
-    if (!node) return;
-    print_tree(node->left_operand);
+    static int i;
+
+    TAB(i);
     switch (node->token.type) {
         case TYPE_INT:
-            printf("value: %ld\n", node->token.value.INT);
+            printf("value: '%ld'\n", node->token.value.INT);
             break;
         case TYPE_FLOAT:
-            printf("value: %lf\n", node->token.value.FLOAT);
+            printf("value: '%lf'\n", node->token.value.FLOAT);
             break;
         case TYPE_OPERATOR:
-            printf("opr: %c, pr: %d\n",
-                    node->token.value.OPR.operator, 
-                    node->token.value.OPR.priority);
+            printf("opr: '%c'\n", node->token.value.OPR.operator );
             break;
         default:
             break;
     }
-    print_tree(node->right_operand);
+
+    if (node->right_operand != NULL) {
+        TAB(i);
+        printf("right: ");
+        print_tree(node->right_operand);
+        i--;
+    }
+
+    if (node->left_operand != NULL) {
+        TAB(i);
+        printf("left: ");
+        print_tree(node->left_operand);
+        i--;
+    }
+
+    i--;
+}
+
+#define DO_OP(dst, operator, op1, op2, type)   \
+    do {                                       \
+        if (type == 'f') {                                      \
+            (dst)->token.value.FLOAT = (op1)->token.value.FLOAT operator (op2)->token.value.FLOAT;          \
+        } else if (type == 'i'){                                                                                        \
+            (dst)->token.value.INT = (op1)->token.value.INT operator (op2)->token.value.INT;          \
+        }                                                                                           \
+    } while(0)              
+
+Ast_Node *resolve_root(Ast_Node *node)
+{   
+    if (node->left_operand != NULL && node->right_operand != NULL) {
+        if (node->right_operand->token.type == TYPE_OPERATOR ||
+            node->left_operand->token.type == TYPE_OPERATOR ) {
+                node->left_operand = resolve_root(node->left_operand);
+                node->right_operand = resolve_root(node->right_operand);
+        }
+            
+        if (node->token.type == TYPE_OPERATOR) {
+            char type;
+            if (node->left_operand->token.type == TYPE_FLOAT) { 
+                type = 'f';
+                node->token.type = TYPE_FLOAT;
+            } else {
+                type = 'i';
+                node->token.type = TYPE_INT;
+            }
+
+            switch (node->token.value.OPR.operator) {
+                case '+':
+                    DO_OP(node, +, node->left_operand, node->right_operand, type);
+                    break;
+                case '*':
+                    DO_OP(node, *, node->left_operand, node->right_operand, type);
+                    break;
+                case '-':
+                    DO_OP(node, -, node->left_operand, node->right_operand, type);
+                    break;
+                case '/':
+                    DO_OP(node, /, node->left_operand, node->right_operand, type);
+                    break;
+                default:
+                    fprintf(stderr, "Error, unknown operator `%c`\n", node->token.value.OPR.operator);
+                    exit(1);
+            }
+
+            free(node->left_operand);
+            free(node->right_operand);
+            return node;
+        }
+    }
+    return node;
+}
+
+void resolve_ast(Ast *ast)
+{
+    ast->root = resolve_root(ast->root);
+    ast->count = 1; 
+}
+
+void ast_clean(Ast *ast)
+{
+    // TODO: Implement this shit
 }
 
 int main(void)
 {
-    Ast_Tree ast = {0};
-    
-    Expresion expr = separate_src_by_tokens(sv_from_cstr (
-        "(12831+12314)*(198*12387)/(745344-643546)"
-    ));
+    Ast ast = {0};
 
+    char *test1 = "(1 * ((1 + 1) + (1 + 1)) / 1 / 1) * 1 * 1 / 1 - 1 * (1 * 1 + 1 * 1) * 1 + 1 * (1 * (1 + 1) * 1) * 1 * 1 * 1 * 1 * 1 * 1 * 1 * 1 - ( 1 * (1 + 1) * 1) * 1 + 1 + 1 * 1 * 1 - 1";
+    char *test2 = "(2.0 / 4.0) * 2.0 + (1.0 / 2.0 + 0.001)";
+
+    Expresion expr = separate_src_by_tokens(sv_from_cstr(test2));
     set_priorities(&expr);
 
-    print_expr(&expr); 
-    printf("\n---------------------------------\n\n");
-
+    // print_expr(&expr);
     generate_tree(&ast, &expr);
-    print_tree(ast.root);
+    // print_tree(ast.root);
 
+    resolve_ast(&ast);
+    printf("%lf\n", ast.root->token.value.FLOAT);
+
+    free(ast.root);
     expr_clean(&expr);   
     return 0;
 }
