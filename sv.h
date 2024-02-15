@@ -6,7 +6,7 @@
 
 typedef struct {
     char *data;
-    int count;
+    size_t count;
 } String_View;
 
 

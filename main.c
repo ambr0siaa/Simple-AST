@@ -60,7 +60,7 @@ void token_push(Expresion *expr, Token tk)
 
     if (expr->count + 1 > expr->capacity) {
         expr->capacity *= 2;
-        expr->tokens = realloc(expr->tokens, expr->capacity); 
+        expr->tokens = realloc(expr->tokens, expr->capacity * sizeof(expr->tokens[0])); 
     }
 
     expr->tokens[expr->count++] = tk;
@@ -121,17 +121,12 @@ String_View separate_by_operator(String_View *sv)
     }
 
     if (i == 1) result.count = i;
-    else result.count = i; 
+    else result.count = i - 1; 
+
     result.data = sv->data;
-    
-    if (i < sv->count) {
-        int t = i - 1;
-        sv->count -= t;
-        sv->data += i;
-    } else {
-        sv->count -= i;
-        sv->data += i;
-    }
+
+    sv->count -= i;
+    sv->data += i;
 
     return result;
 }
@@ -175,7 +170,7 @@ Expresion separate_src_by_tokens(String_View src)
     while (src_trimed.count > 0 && src_trimed.data[0] != '\0') {
         Token tk;
         if (isdigit(src_trimed.data[0])) {
-            String_View value = sv_trim(separate_by_operator(&src_trimed));
+            String_View value = sv_trim(separate_by_operator(&src_trimed));    
             if (sv_is_float(value)) {
                 tk.type = TYPE_FLOAT;
                 tk.value = parse_value(value, 1);
@@ -184,30 +179,30 @@ Expresion separate_src_by_tokens(String_View src)
                 tk.value = parse_value(value, 2);
             }
         } else {
-            String_View opr = sv_trim(sv_div_by_next_symbol(&src_trimed));
-            switch (opr.data[0]) {
-                case '(': tk.type = TYPE_OPEN_BRACKET;  break;
-                case ')': tk.type = TYPE_CLOSE_BRACKET; break;
-                case '+': tk.type = TYPE_OPERATOR;      break;
-                case '*': tk.type = TYPE_OPERATOR;      break;
-                case '-': tk.type = TYPE_OPERATOR;      break;
-                case '/': tk.type = TYPE_OPERATOR;      break;
-                default:
-                    fprintf(stderr, "Error: unknown operator `%c`\n", opr.data[0]);
-                    exit(1);
+            if (src_trimed.count != 0) {
+                String_View opr = sv_trim(sv_div_by_next_symbol(&src_trimed));    
+                switch (opr.data[0]) {
+                    case '+': tk.type = TYPE_OPERATOR;      break;
+                    case '*': tk.type = TYPE_OPERATOR;      break;
+                    case '-': tk.type = TYPE_OPERATOR;      break;
+                    case '/': tk.type = TYPE_OPERATOR;      break;
+                    case '(': tk.type = TYPE_OPEN_BRACKET;  break;
+                    case ')': tk.type = TYPE_CLOSE_BRACKET; break;
+                    default:
+                        fprintf(stderr, "Error: unknown operator `%c`\n", opr.data[0]);
+                        exit(1);
+                }
+                tk.value.OPR.operator = opr.data[0];
             }
-            tk.value.OPR.operator = opr.data[0];
         }
         token_push(&expr, tk);
     }
     return expr;
 }
 
-
-// TODO: remake set_priorities
 void set_priorities(Expresion *expr)
 {
-    size_t bracket_count = 0;
+    int bracket_count = 0;
     size_t opr_count = 0;
     size_t zero_priority_count = 0;
     
@@ -334,11 +329,8 @@ void generate_tree(Ast *ast, Expresion *expr)
     (iter)++;                           \
 })                                     
 
-void print_tree(Ast_Node *node)
+void print_node(Ast_Node *node)
 {
-    static int i;
-
-    TAB(i);
     switch (node->token.type) {
         case TYPE_INT:
             printf("value: '%ld'\n", node->token.value.INT);
@@ -352,6 +344,14 @@ void print_tree(Ast_Node *node)
         default:
             break;
     }
+}
+
+void print_tree(Ast_Node *node)
+{
+    static int i;
+
+    TAB(i);
+    print_node(node);
 
     if (node->right_operand != NULL) {
         TAB(i);
@@ -370,12 +370,12 @@ void print_tree(Ast_Node *node)
     i--;
 }
 
-#define DO_OP(dst, operator, op1, op2, type)   \
-    do {                                       \
-        if (type == 'f') {                                      \
-            (dst)->token.value.FLOAT = (op1)->token.value.FLOAT operator (op2)->token.value.FLOAT;          \
-        } else if (type == 'i'){                                                                                        \
-            (dst)->token.value.INT = (op1)->token.value.INT operator (op2)->token.value.INT;          \
+#define DO_OP(dst, operator, op1, op2, type)                                                        \
+    do {                                                                                            \
+        if (type == 'f') {                                                                          \
+            (dst)->token.value.FLOAT = (op1)->token.value.FLOAT operator (op2)->token.value.FLOAT;  \
+        } else if (type == 'i'){                                                                    \
+            (dst)->token.value.INT = (op1)->token.value.INT operator (op2)->token.value.INT;        \
         }                                                                                           \
     } while(0)              
 
@@ -399,18 +399,10 @@ Ast_Node *resolve_root(Ast_Node *node)
             }
 
             switch (node->token.value.OPR.operator) {
-                case '+':
-                    DO_OP(node, +, node->left_operand, node->right_operand, type);
-                    break;
-                case '*':
-                    DO_OP(node, *, node->left_operand, node->right_operand, type);
-                    break;
-                case '-':
-                    DO_OP(node, -, node->left_operand, node->right_operand, type);
-                    break;
-                case '/':
-                    DO_OP(node, /, node->left_operand, node->right_operand, type);
-                    break;
+                case '+':   DO_OP(node, +, node->left_operand, node->right_operand, type); break;
+                case '*':   DO_OP(node, *, node->left_operand, node->right_operand, type); break;
+                case '-':   DO_OP(node, -, node->left_operand, node->right_operand, type); break;
+                case '/':   DO_OP(node, /, node->left_operand, node->right_operand, type); break;
                 default:
                     fprintf(stderr, "Error, unknown operator `%c`\n", node->token.value.OPR.operator);
                     exit(1);
@@ -439,19 +431,18 @@ int main(void)
 {
     Ast ast = {0};
 
-    char *test1 = "(1 * ((1 + 1) + (1 + 1)) / 1 / 1) * 1 * 1 / 1 - 1 * (1 * 1 + 1 * 1) * 1 + 1 * (1 * (1 + 1) * 1) * 1 * 1 * 1 * 1 * 1 * 1 * 1 * 1 - ( 1 * (1 + 1) * 1) * 1 + 1 + 1 * 1 * 1 - 1";
-    char *test2 = "(2.0 / 4.0) * 2.0 + (1.0 / 2.0 + 0.001)";
+    char *test2 = "2.0 / 4.0";
+    char *test1 = "(1 + 1) * 1";
 
-    Expresion expr = separate_src_by_tokens(sv_from_cstr(test2));
+    Expresion expr = separate_src_by_tokens(sv_from_cstr(test1));
     set_priorities(&expr);
 
-    // print_expr(&expr);
     generate_tree(&ast, &expr);
-    // print_tree(ast.root);
-
+    print_tree(ast.root); 
+    
     resolve_ast(&ast);
-    printf("%lf\n", ast.root->token.value.FLOAT);
-
+    print_node(ast.root);
+    
     free(ast.root);
     expr_clean(&expr);   
     return 0;
