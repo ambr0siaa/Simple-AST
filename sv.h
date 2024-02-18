@@ -9,6 +9,16 @@ typedef struct {
     size_t count;
 } String_View;
 
+String_View sv_div_by_next_symbol(String_View *sv);
+String_View sv_from_cstr(char *cstr);
+String_View sv_trim_left(String_View sv);
+String_View sv_trim_right(String_View sv);
+String_View sv_trim(String_View sv);
+String_View sv_div_by_delim(String_View *sv, char delim);
+String_View separate_by_operator(String_View *sv);
+int sv_cmp(String_View sv1, String_View sv2);
+int sv_to_int(String_View sv);
+int sv_is_float(String_View sv);
 
 #endif // SV_H_
 
@@ -140,6 +150,36 @@ String_View sv_div_by_next_symbol(String_View *sv)
         sv->count -= i;
         sv->data += i;
     }
+
+    return result;
+}
+
+String_View separate_by_operator(String_View *sv)
+{
+    size_t i = 0;
+    int brk = 0;
+    String_View result;
+
+    while (i < sv->count) {
+        if (sv->data[i] == '+' ||
+            sv->data[i] == '-' ||
+            sv->data[i] == '*' ||
+            sv->data[i] == '/' ||
+            sv->data[i] == ')' ||
+            sv->data[i] == '('  ) 
+            brk = 1;
+        
+        if (brk) break;
+        i += 1;
+    }
+
+    if (i == 1) result.count = i;
+    else result.count = i; 
+
+    result.data = sv->data;
+
+    sv->count -= i;
+    sv->data += i;
 
     return result;
 }
