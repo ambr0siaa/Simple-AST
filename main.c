@@ -122,7 +122,7 @@ void tl_clean(Token_List *tl)
     tl->capacity = 0;
 }
 
-Token_List tokensizer(String_View src)
+Token_List tokenizer(String_View src)
 {
     Token_List tl = {0};
     String_View src_trimed = sv_trim(src);
