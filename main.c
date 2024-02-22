@@ -1,8 +1,8 @@
-#define SV_IMPLEMENTAION
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 
+#define SV_IMPLEMENTAION
 #include "./sv.h"
 
 typedef enum {
@@ -51,7 +51,8 @@ typedef struct {
     Token *tokens;
     size_t count;
     size_t capacity;
-} Token_List;
+    size_t tp;         // Token Pointer
+} Lexer;
 
 typedef struct ast_node {
     Token token;
@@ -67,15 +68,16 @@ typedef struct {
 #define VAL_INT(val) (Value) { .type = INT, .i64 = (val) }
 #define VAL_FLOAT(val) (Value) { .type = FLOAT, .f64 = (val) }
 
-// 0 - none
-// 1 - float
-// 2 - int
-Value parse_value(String_View sv, int value_kind)
+#define NONE_MODE 0
+#define FLOAT_MODE 1
+#define INT_MODE 2
+
+Value parse_value(String_View sv, int mode)
 {
     int is_float;
 
-    if (value_kind == 0) is_float = sv_is_float(sv);
-    else is_float = value_kind;
+    if (mode == NONE_MODE) is_float = sv_is_float(sv);
+    else is_float = mode;
 
     if (is_float == 1) {
         char *float_cstr = malloc(sizeof(char) * sv.count + 1);
@@ -98,48 +100,74 @@ Value parse_value(String_View sv, int value_kind)
     }
 }
 
-#define TL_INIT_CAPACITY 128
+#define LEX_INIT_CAPACITY 128
 
-void token_push(Token_List *tl, Token tk)
+void lex_push(Lexer *lex, Token tk)
 {
-    if (tl->capacity == 0) {
-        tl->capacity = TL_INIT_CAPACITY;
-        tl->tokens = malloc(TL_INIT_CAPACITY * sizeof(tl->tokens[0]));
+    if (lex->capacity == 0) {
+        lex->capacity = LEX_INIT_CAPACITY;
+        lex->tokens = malloc(LEX_INIT_CAPACITY * sizeof(lex->tokens[0]));
+        lex->tp = 0;
     }
 
-    if (tl->count + 1 > tl->capacity) {
-        tl->capacity *= 2;
-        tl->tokens = realloc(tl->tokens, tl->capacity * sizeof(tl->tokens[0])); 
+    if (lex->count + 1 > lex->capacity) {
+        lex->capacity *= 2;
+        lex->tokens = realloc(lex->tokens, lex->capacity * sizeof(lex->tokens[0])); 
     }
 
-    tl->tokens[tl->count++] = tk;
+    lex->tokens[lex->count++] = tk;
 }
 
-void tl_clean(Token_List *tl)
+void lex_clean(Lexer *lex)
 {
-    free(tl->tokens);
-    tl->count = 0;
-    tl->capacity = 0;
+    free(lex->tokens);
+    lex->count = 0;
+    lex->capacity = 0;
 }
 
-Token_List tokenizer(String_View src)
+String_View lex_sep_by_operator(String_View *sv)
 {
-    Token_List tl = {0};
-    String_View src_trimed = sv_trim(src);
+    size_t i = 0;
+    int brk = 0;
+    String_View result;
 
-    while (src_trimed.count > 0 && src_trimed.data[0] != '\0') {
+    while (i < sv->count) {
+        if (sv->data[i] == '+' ||
+            sv->data[i] == '-' ||
+            sv->data[i] == '*' ||
+            sv->data[i] == '/' ||
+            sv->data[i] == ')' ||
+            sv->data[i] == '('  ) 
+            brk = 1;
+        
+        if (brk) break;
+        i += 1;
+    }
+
+    result.count = i;
+    result.data = sv->data;
+
+    sv->count -= i;
+    sv->data += i;
+
+    return result;
+}
+
+Lexer lexer(String_View src)
+{
+    Lexer lex = {0};
+
+    while (src.count != 0) {
         Token tk;
-        if (isdigit(src_trimed.data[0])) {
-            String_View value = sv_trim(separate_by_operator(&src_trimed));   
+        if (isdigit(src.data[0])) {
+            String_View value = sv_trim(lex_sep_by_operator(&src));   
             tk.type = TYPE_VALUE;
-            if (sv_is_float(value)) {
-                tk.val = parse_value(value, 1);
-            } else {
-                tk.val = parse_value(value, 2);
-            }
+
+            if (sv_is_float(value)) tk.val = parse_value(value, FLOAT_MODE);
+            else tk.val = parse_value(value, INT_MODE);
         } else {
-            if (src_trimed.count != 0) {
-                String_View opr = sv_trim(sv_div_by_next_symbol(&src_trimed));    
+            if (src.count != 0) {
+                String_View opr = sv_trim(sv_div_by_next_symbol(&src));    
                 switch (opr.data[0]) {
                     case '(': tk.type = TYPE_OPEN_BRACKET;  break;
                     case ')': tk.type = TYPE_CLOSE_BRACKET; break;
@@ -156,9 +184,10 @@ Token_List tokenizer(String_View src)
                 tk.op.operator = opr.data[0];
             }
         }
-        token_push(&tl, tk);
+        lex_push(&lex, tk);
     }
-    return tl;
+
+    return lex;
 }
 
 #define TAB(iter) ({                    \
@@ -183,7 +212,7 @@ void print_node(Ast_Node *node)
     }
 }
 
-void print_tree(Ast_Node *node)
+void print_ast(Ast_Node *node)
 {
     static int i;
 
@@ -193,14 +222,14 @@ void print_tree(Ast_Node *node)
     if (node->right_operand != NULL) {
         TAB(i);
         printf("right: ");
-        print_tree(node->right_operand);
+        print_ast(node->right_operand);
         i--;
     }
 
     if (node->left_operand != NULL) {
         TAB(i);
         printf("left: ");
-        print_tree(node->left_operand);
+        print_ast(node->left_operand);
         i--;
     }
 
@@ -209,11 +238,10 @@ void print_tree(Ast_Node *node)
 
 #define BINARY_OP(dst, operator, op1, op2, type)                                        \
     do {                                                                                \
-        if (type == 'f') {                                                              \
+        if (type == 'f')                                                                \
             (dst)->token.val.f64 = (op1)->token.val.f64 operator (op2)->token.val.f64;  \
-        } else if (type == 'i') {                                                       \
+        else if (type == 'i')                                                           \
             (dst)->token.val.i64 = (op1)->token.val.i64 operator (op2)->token.val.i64;  \
-        }                                                                               \
     } while(0)              
 
 Ast_Node *resolve_root(Ast_Node *node)
@@ -228,12 +256,12 @@ Ast_Node *resolve_root(Ast_Node *node)
         if (node->token.type == TYPE_OPERATOR) {
             char type;
             if (node->left_operand->token.val.type == FLOAT) {
-                type = 'f';
+                type = 'f'; 
                 node->token.val.type = FLOAT;
-            } else { 
-                type = 'i';
+            } else {
+                type = 'i'; 
                 node->token.val.type = INT;
-            }
+            } 
             
             node->token.type = TYPE_VALUE;
 
@@ -261,33 +289,42 @@ void resolve_ast(Ast *ast)
     ast->count = 1; 
 }
 
-void ast_clean(Ast *ast)
+void ast_clean(Ast_Node *node)
 {
-    // TODO: implement `ast_clean(Ast *ast)`
+    if (node->token.type == TYPE_OPERATOR) {
+        if (node->left_operand->token.type == TYPE_VALUE && 
+            node->right_operand->token.type == TYPE_VALUE) {
+            free(node->right_operand);
+            free(node->left_operand);
+        }
+    } else if (node->token.type == TYPE_VALUE) { 
+        return;
+    } else {
+        ast_clean(node->left_operand);
+        ast_clean(node->right_operand);
+    }
 }
 
-Token token_next(Token_List *tl, size_t *tkc)
+Token token_next(Lexer *lex)
 {
-    if (*tkc >= tl->count)
-        return (Token) { .type = TYPE_NONE };
+    if (lex->tp >= lex->count) return (Token) { .type = TYPE_NONE };
     else {
-        Token tk = tl->tokens[*tkc];
-        *tkc += 1;
+        Token tk = lex->tokens[lex->tp];
+        lex->tp += 1;
         return tk;
     }
 }
 
-Token_Type token_peek(Token_List *tl, size_t *tkc)
+Token_Type token_peek(Lexer *lex)
 {
-    if (*tkc >= tl->count)
-        return TYPE_NONE;
+    if (lex->tp >= lex->count) return TYPE_NONE;
     else {
-        Token_Type type = tl->tokens[*tkc].type;
+        Token_Type type = lex->tokens[lex->tp].type;
         return type;
     }
 }
 
-Operator_Type peek_op(Token tk)
+Operator_Type operator_peek(Token tk)
 {
     if (tk.type != TYPE_OPERATOR) return OP_NONE;
     else return tk.op.type;
@@ -297,10 +334,8 @@ void print_token(Token tk)
 {
     switch (tk.type) {
         case TYPE_VALUE: {
-            if (tk.val.type == FLOAT) 
-                printf("float: `%lf`\n", tk.val.f64);
-            else 
-                printf("int: `%ld`\n", tk.val.i64);
+            if (tk.val.type == FLOAT) printf("float: `%lf`\n", tk.val.f64);
+            else printf("int: `%ld`\n", tk.val.i64);
             break;
         }
         case TYPE_OPERATOR: {
@@ -322,52 +357,22 @@ void print_token(Token tk)
     }
 }
 
-void print_tl(Token_List *tl)
+void print_lex(Lexer *lex)
 {
-    for (size_t i = 0; i < tl->count; ++i) {
-        print_token(tl->tokens[i]);
+    for (size_t i = 0; i < lex->count; ++i) {
+        print_token(lex->tokens[i]);
     }
 }
 
 Ast_Node *ast_node_create(Token tk)
 {
     Ast_Node *node = malloc(sizeof(Ast_Node));
+    
     node->token = tk;
     node->left_operand = NULL;
     node->right_operand = NULL;
+    
     return node;
-}
-
-Ast_Node *parse_terminal(Token tk, Token_List *tl, size_t *tkc)
-{
-    Ast_Node *val1 = ast_node_create(tk);
-    Token_Type tk_type = token_peek(tl, tkc);
-
-    if (tk_type == TYPE_OPERATOR) {
-        Token opr = token_next(tl, tkc);
-        Operator_Type op_type = peek_op(opr);
-
-        if (op_type == OP_MULT || op_type == OP_DIV) {
-            Ast_Node *op = ast_node_create(opr);
-            Token t = token_next(tl, tkc);
-
-            if (t.type == TYPE_NONE) {
-                fprintf(stderr, "Error: expected second operand\n");
-                exit(1);
-            }
-
-            Ast_Node *val2 = ast_node_create(t);  
-
-            op->left_operand = val1;
-            op->right_operand = val2;
-
-            return op;
-        } else {
-            *tkc -= 1;
-        }
-    }
-
-    return val1;
 }
 
 // TODO: increment count of ast
@@ -386,11 +391,56 @@ void ast_push_subtree(Ast *ast, Ast_Node *subtree)
     }
 }
 
-void parse_tokens(Ast *ast, Token_List *tl)
+// E: T { + | -  T }*
+// T: V { * | /  V }*
+// V: INT | FLOAT
+
+// TODO: support many *
+// TODO: function parse_expr
+Ast_Node *parse_term(Token tk, Lexer *lex)
 {
-    size_t tkc = 0; // token counter
+    Ast_Node *val1 = ast_node_create(tk);
+    Ast subtree = {0};
+
+    do {
+        Token_Type tk_type = token_peek(lex);
+        if (tk_type == TYPE_NONE) break;
+
+        if (tk_type == TYPE_OPERATOR) {
+            Token opr_tk = token_next(lex);
+            Operator_Type op_type = operator_peek(opr_tk);
+
+            if (op_type == OP_MULT || op_type == OP_DIV) {
+                Ast_Node *opr_node = ast_node_create(opr_tk);
+                Token t = token_next(lex);
+
+                if (t.type == TYPE_NONE) {
+                    fprintf(stderr, "Error: expected second operand\n");
+                    exit(1);
+                }
+
+                Ast_Node *val2 = ast_node_create(t);  
+
+                opr_node->left_operand = val1;
+                opr_node->right_operand = val2;
+
+                ast_push_subtree(&subtree, opr_node);
+            } else {
+                lex->tp -= 1;
+                break;
+            }
+        } else break;
+    } while (1);
+
+    if (subtree.root == NULL) return val1;
+    else return subtree.root;
+}
+
+// TODO: parsing brackets, many * and other things
+void parser(Ast *ast, Lexer *lex)
+{
     while (1) {
-        Token tk = token_next(tl, &tkc);
+        Token tk = token_next(lex);
         if (tk.type == TYPE_NONE) break;
         
         if (tk.type == TYPE_VALUE) {
@@ -398,22 +448,31 @@ void parse_tokens(Ast *ast, Token_List *tl)
             Ast_Node *opr;
             Ast_Node *val2;
 
-            val1 = parse_terminal(tk, tl, &tkc);
+            val1 = parse_term(tk, lex);
 
-            Token_Type type = token_peek(tl, &tkc);
+            Token_Type type = token_peek(lex);
             if (type == TYPE_OPERATOR) {
-                Token op = token_next(tl, &tkc);
+                Token op = token_next(lex);
                 if (op.op.type == OP_MINUS || op.op.type == OP_PLUS) {
                     opr = ast_node_create(op);
 
-                    Token v2 = token_next(tl, &tkc);
+                    Token v2 = token_next(lex);
                     
                     if (v2.type != TYPE_VALUE) {
                         fprintf(stderr, "Error: expected second operator\n");
                         exit(1);
                     } 
                     
-                    val2 = parse_terminal(v2, tl, &tkc);
+                    val2 = parse_term(v2, lex);
+
+                    opr->left_operand = val1;
+                    opr->right_operand = val2;
+
+                    ast_push_subtree(ast, opr);
+                } else if (op.op.type == OP_MULT || op.op.type == OP_DIV) {
+                    opr = ast_node_create(op);
+                    Token t = token_next(lex);
+                    val2 = parse_term(t, lex);
 
                     opr->left_operand = val1;
                     opr->right_operand = val2;
@@ -426,33 +485,46 @@ void parse_tokens(Ast *ast, Token_List *tl)
             }
         } else if (tk.type == TYPE_OPERATOR) {
             Ast_Node *opr = ast_node_create(tk);
-            Token val = token_next(tl, &tkc);
+            Token val = token_next(lex);
             
             if (val.type == TYPE_NONE || val.type != TYPE_VALUE) {
                 fprintf(stderr, "Error: not enough operands\n");
                 exit(1);
             }
 
-            opr->right_operand = parse_terminal(val, tl, &tkc);
+            opr->right_operand = parse_term(val, lex);
             ast_push_subtree(ast, opr);
         }
     }
 }
 
+void ast_delete(Ast *ast)
+{
+    ast_clean(ast->root);
+    if (ast->count == 1) 
+        free(ast->root);
+}
+
 int main(void)
 {
     Ast ast = {0};
-    Token_List tl;
+    Lexer lex;
 
-    tl = tokensizer(sv_from_cstr("1 * 45 - 2 * 1 + 2 * 10 + 3 * 8 + 32 / 2"));
+    char *test1 = "1 * 45 * 2 * 3 * 1 * 1 - 2 * 1 * 2 * 3 * 10 + 2 * 10 * 3 + 3 * 8 * 3 + 32 / 2 + 1 * 1";
+    char *test2 = "2 * 2 * 2 + 1";
 
-    print_tl(&tl);
-    parse_tokens(&ast, &tl);
-    print_tree(ast.root);
+    lex = lexer(sv_from_cstr(test1));
+    print_lex(&lex);
+
+    parser(&ast, &lex);
+
+    printf("\n\n");
+    print_ast(ast.root);
 
     resolve_ast(&ast);
     print_node(ast.root);
     
-    tl_clean(&tl);
+    ast_delete(&ast);
+    lex_clean(&lex);
     return 0;
 }
