@@ -1,11 +1,13 @@
 #ifndef LEXER_H_
 #define LEXER_H_
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 
 #include "./sv.h"
+#include "./var.h"
 
 #define EXIT exit(1)
 
@@ -14,6 +16,7 @@ typedef enum {
     OP_MINUS,
     OP_MULT,
     OP_DIV,
+    OP_MOD,
     OP_NONE
 } Operator_Type;
 
@@ -21,22 +24,6 @@ typedef struct {
     Operator_Type type;
     char operator;
 } Operator;
-
-typedef enum {
-    VAL_FLOAT = 0,
-    VAL_INT
-} Value_Type;
-
-typedef struct {
-    Value_Type type;
-    union {
-        int64_t i64;
-        double f64;
-    };
-} Value;
-
-#define VALUE_INT(val) (Value) { .type = VAL_INT, .i64 = (val) }
-#define VALUE_FLOAT(val) (Value) { .type = VAL_FLOAT, .f64 = (val) }
 
 typedef enum {
     TYPE_OPERATOR = 0,
@@ -54,10 +41,8 @@ typedef struct {
     };
 } Token;
 
-#define LEX_INIT_CAPACITY 128
-
 typedef struct {
-    Token *tokens;
+    Token *items;
     size_t count;
     size_t capacity;
     size_t tp;         // Token Pointer
@@ -78,8 +63,6 @@ void lex_push(Lexer *lex, Token tk);
 Token token_next(Lexer *lex);
 Token_Type token_peek(Lexer *lex);
 
-Lexer lexer(String_View src);
-
-String_View lex_sep_by_operator(String_View *sv);
+Lexer lexer(String_View src_sv, Var_List *vl);
 
 #endif // LEXER_H_

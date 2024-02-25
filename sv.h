@@ -22,5 +22,11 @@ String_View sv_div_by_delim(String_View *sv, char delim);
 int sv_cmp(String_View sv1, String_View sv2);
 int sv_to_int(String_View sv);
 int sv_is_float(String_View sv);
+int char_in_sv(String_View sv, char c);
+
+void sv_cut_left(String_View *sv, int step);
+void sv_cut_space_left(String_View *sv);
+String_View sv_cut_value(String_View *sv);
+String_View sv_cut_part(String_View *sv);
 
 #endif // SV_H_

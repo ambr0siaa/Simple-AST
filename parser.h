@@ -14,7 +14,7 @@ typedef struct {
     size_t count;
 } Ast;
 
-// This macro make need indent, when printin ast
+// This macro make need indent, when printing ast
 #define TAB(iter) ({                    \
     for (int j = 0; j < (iter); ++j) {  \
         printf(" ");                    \
@@ -34,14 +34,14 @@ void print_ast_root(Ast_Node *node);
             (dst)->token.val.i64 = (op1)->token.val.i64 operator (op2)->token.val.i64;  \
     } while(0)              
 
-void resolve_ast(Ast *ast);
+void eval(Ast *ast);
 void parser(Ast *ast, Lexer *lex);
 void ast_clean(Ast_Node *node, size_t *node_count);
 void ast_push_subtree(Ast *ast, Ast_Node *subtree);
 void subtree_node_count(Ast_Node *subtree, size_t *count);
 
 Ast_Node *ast_node_create(Token tk);
-Ast_Node *resolve_root(Ast_Node *node);
+Ast_Node *resolve_ast(Ast_Node *node);
 Ast_Node *parse_expr(Token tk, Lexer *lex);
 Ast_Node *parse_term(Token tk, Lexer *lex);
 

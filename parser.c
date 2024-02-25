@@ -49,13 +49,13 @@ void print_ast(Ast *ast)
     printf("\n------------------------------------------------------------\n\n");
 }
 
-Ast_Node *resolve_root(Ast_Node *node)
+Ast_Node *resolve_ast(Ast_Node *node)
 {   
     if (node->left_operand != NULL && node->right_operand != NULL) {
         if (node->right_operand->token.type == TYPE_OPERATOR ||
             node->left_operand->token.type == TYPE_OPERATOR ) {
-                node->left_operand = resolve_root(node->left_operand);
-                node->right_operand = resolve_root(node->right_operand);
+                node->left_operand = resolve_ast(node->left_operand);
+                node->right_operand = resolve_ast(node->right_operand);
         }
             
         if (node->token.type == TYPE_OPERATOR) {
@@ -75,9 +75,10 @@ Ast_Node *resolve_root(Ast_Node *node)
                 case '*': BINARY_OP(node, *, node->left_operand, node->right_operand, type); break;
                 case '-': BINARY_OP(node, -, node->left_operand, node->right_operand, type); break;
                 case '/': BINARY_OP(node, /, node->left_operand, node->right_operand, type); break;
-                default:
+                default: {
                     fprintf(stderr, "Error, unknown operator `%c`\n", node->token.op.operator);
                     EXIT;
+                }
             }
 
             free(node->left_operand);
@@ -89,9 +90,9 @@ Ast_Node *resolve_root(Ast_Node *node)
 }
 
 // Get ast and calculate final number
-void resolve_ast(Ast *ast)
+void eval(Ast *ast)
 {
-    ast->root = resolve_root(ast->root);
+    ast->root = resolve_ast(ast->root);
     ast->count = 1; 
 }
 
@@ -206,11 +207,15 @@ Ast_Node *parse_expr(Token tk, Lexer *lex)
                 token_next(lex);
                 return val1;
 
+            } else if (type == TYPE_VALUE) {
+                fprintf(stderr, "TODO: `TYPE_VALUE` not implemented\n");
+                EXIT;
+
             } else {
                 fprintf(stderr, "Error: in `parse_expr` unknown token type `%u`\n", type);
                 EXIT;
             }
-        } while(type != TYPE_NONE); 
+        } while(1); 
 
         return val1;
 
@@ -218,6 +223,7 @@ Ast_Node *parse_expr(Token tk, Lexer *lex)
         Token t1 = token_next(lex);
         Ast_Node *subtree = parse_expr(t1, lex);
 
+        // TODO: rework this part to parse more brackets
         Token t2 = token_next(lex);
         if (t2.type == TYPE_OPERATOR) {
             Ast_Node *val;
@@ -317,11 +323,24 @@ void parser(Ast *ast, Lexer *lex)
         
         size_t count = 0;
         if (tk.type == TYPE_VALUE) {
-            Ast_Node *subtree = parse_expr(tk, lex);
-            if (subtree == NULL) EXIT;
+            Token_Type type = token_peek(lex);
+            if (type == TYPE_OPERATOR) {
+                Token t1 = token_next(lex);
+                if (t1.op.type == OP_MINUS || t1.op.type == OP_PLUS) {
+                    lex->tp -= 1;
 
-            subtree_node_count(subtree, &count);
-            ast_push_subtree(ast, subtree);
+                    Ast_Node *subtree = parse_expr(tk, lex);
+                    if (subtree == NULL) EXIT;
+
+                    subtree_node_count(subtree, &count);
+                    ast_push_subtree(ast, subtree);
+                } else if (t1.op.type == OP_MULT || t1.op.type == OP_DIV) {
+                    lex->tp -= 1;
+                    Ast_Node *val = parse_term(tk, lex);
+                    subtree_node_count(val, &count);
+                    ast_push_subtree(ast, val);
+                }
+            }
 
         } else if (tk.type == TYPE_OPERATOR) {
             Ast_Node *val;

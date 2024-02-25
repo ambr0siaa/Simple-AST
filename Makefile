@@ -1,7 +1,6 @@
 CC = gcc
-SRC = main.c parser.c lexer.c sv.c
+SRC = parser.c lexer.c sv.c var.c
 CFLAGS = -Wall -Wextra
-EXE = main
 
-all:
-	$(CC) $(SRC) $(CFLAGS) -o $(EXE)
+main:
+	$(CC) main.c $(SRC) $(CFLAGS) -o main -g

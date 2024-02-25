@@ -121,3 +121,66 @@ String_View sv_div_by_next_symbol(String_View *sv)
 
     return result;
 }
+
+int char_in_sv(String_View sv, char c)
+{   
+    int result = 0;
+    for (size_t i = 0; i < sv.count; ++i) {
+        if (sv.data[i] == c) {
+            result = 1;
+            break;
+        }
+    }
+    return result;
+}
+
+void sv_cut_space_left(String_View *sv)
+{
+    size_t i = 0;
+    while (i < sv->count && isspace(sv->data[i])) {
+        i++;
+    }
+
+    sv->count -= i;
+    sv->data += i;
+}
+
+void sv_cut_left(String_View *sv, int step)
+{
+    sv->count -= step;
+    sv->data += step;
+}
+
+String_View sv_cut_value(String_View *sv)
+{
+    String_View result;
+    size_t i = 0;
+    while (i < sv->count && (isdigit(sv->data[i]) || sv->data[i] == '.')) {
+        i++;
+    }
+
+    result.data = sv->data;
+    result.count = i;
+
+    sv->count -= i;
+    sv->data += i;
+
+    return result;
+}
+
+String_View sv_cut_part(String_View *sv)
+{
+    String_View result;
+    size_t i = 0;
+    while (i < sv->count && isalpha(sv->data[i])) {
+        i++;
+    }
+
+    result.count = i;
+    result.data = sv->data;
+
+    sv->count -= i;
+    sv->data += i;
+
+    return result;
+}
