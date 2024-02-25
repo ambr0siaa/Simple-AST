@@ -10,11 +10,9 @@ int main(void)
     var_push(&vl, arsenii);
 
     char *test = "23 * (32 * (arsenii*(4 * (45 + arsenii* (1234 - 3434 * (arsenii - 1))) + 3 * (234 + 5) + 2 * (32 + 4)) + 56) + 4 * (45 + 1) + arsenii * (234 + 5) + 2 * (32 + 4))";
-    // NOTE: in this example prarser breaks for now
-    char *test2 = "4 * (((32 + 4 + 1) * (5 + 3 + 6) * (2 + 3 + 5 + 6)) + ((9 * (2 + 3 - 4) * 3 + (5 + 6 - 3)) * 2) * ((3 * 3 * 3) - (4 - 5) * 3))";
+    char *test2 = "4 * (((32 + 4 + 1) * (5 + 3 + 6) * (2 + 3 + 5 + 6)) + ((9 * (2 + 3 - 4) * 3 + (5 + 6 - 3)) * 2) * ((3 * 3 * 3) - (4 - 5) * 3 * 3))";
 
-    // TODO: rework `parse_expr`
-    lex = lexer(sv_from_cstr(test), &vl);
+    lex = lexer(sv_from_cstr(test2), &vl);
     print_lex(&lex);
 
     parser(&ast, &lex);

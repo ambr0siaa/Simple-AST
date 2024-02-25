@@ -142,6 +142,14 @@ void ast_push_subtree(Ast *ast, Ast_Node *subtree)
     }
 }
 
+void subtree_node_count(Ast_Node *subtree, size_t *count) 
+{
+    if (subtree == NULL) return;
+    subtree_node_count(subtree->left_operand, count);
+    *count += 1;
+    subtree_node_count(subtree->right_operand, count);
+}
+
 /*
 *  Grammar:
 *
@@ -207,12 +215,11 @@ Ast_Node *parse_expr(Token tk, Lexer *lex)
                 token_next(lex);
                 return val1;
 
-            } else if (type == TYPE_VALUE) {
-                fprintf(stderr, "TODO: `TYPE_VALUE` not implemented\n");
-                EXIT;
-
             } else {
                 fprintf(stderr, "Error: in `parse_expr` unknown token type `%u`\n", type);
+                print_token(lex->items[lex->tp]);
+                printf("tp: %zu\n", lex->tp);
+                printf("count: %zu\n", lex->count);
                 EXIT;
             }
         } while(1); 
@@ -220,51 +227,69 @@ Ast_Node *parse_expr(Token tk, Lexer *lex)
         return val1;
 
     } else if (tk.type == TYPE_OPEN_BRACKET) {
+        Token_Type type;
         Token t1 = token_next(lex);
         Ast_Node *subtree = parse_expr(t1, lex);
 
-        // TODO: rework this part to parse more brackets
-        Token t2 = token_next(lex);
-        if (t2.type == TYPE_OPERATOR) {
-            Ast_Node *val;
-            Ast_Node *opr_node = ast_node_create(t2);
+        do {
+            type = token_peek(lex);
+            if (type == TYPE_OPERATOR) {
+                Ast_Node *val;
+                Token opr_tk = token_next(lex);
+                Ast_Node *opr_node = ast_node_create(opr_tk);
 
-            Token t3 = token_next(lex);
-            if (t3.type == TYPE_OPEN_BRACKET) {
-                t3 = token_next(lex);
-                val = parse_expr(t3, lex);
+                Token tk2 = token_next(lex);
+                if (tk2.type == TYPE_OPEN_BRACKET) {
+                    Token tk3 = token_next(lex);
+                    val = parse_expr(tk3, lex);
+                    
+                    if (val == NULL) EXIT;
 
-            } else if (t3.type == TYPE_VALUE) {
-                val = parse_term(t3, lex);
+                    Token t2 = token_next(lex);
+                    if (t2.type == TYPE_OPERATOR) {
+                        Ast_Node *subval;
+                        Ast_Node *op_node = ast_node_create(t2);
 
+                        Token t3 = token_next(lex);
+                        if (t3.type == TYPE_OPEN_BRACKET) {
+                            Token t4 = token_next(lex);
+                            subval = parse_expr(t4, lex);
+
+                            if (subval == NULL) EXIT;
+
+                        } else if (t3.type == TYPE_VALUE) {
+                            subval = parse_term(t3, lex);
+                        }
+
+                        op_node->left_operand = val;
+                        op_node->right_operand = subval;
+                        val = op_node;
+
+                    } else {
+                        lex->tp -= 1;
+                    }
+
+                } else if (tk2.type == TYPE_VALUE) {
+                    val = parse_term(tk2, lex);
+                }
+
+                opr_node->left_operand = subtree;
+                opr_node->right_operand = val;
+                subtree = opr_node;
+
+            } else if (type == TYPE_CLOSE_BRACKET) {
+                token_next(lex);
             } else {
-                fprintf(stderr, "unknown type `%u`\n", t3.type);
-                EXIT;
+                break;
             }
+        } while (1);
 
-            if (val == NULL) EXIT;
-
-            opr_node->right_operand = val;
-            opr_node->left_operand = subtree;
-            
-            return opr_node;
-
-        } else {
-            lex->tp -= 1;
-            return subtree;
-        }
+        return subtree;
+        
     } else {
         fprintf(stderr, "Error: unknown type in function `parse_expr` in 1st condition\n");
         return NULL;
     }
-}
-
-void subtree_node_count(Ast_Node *subtree, size_t *count) 
-{
-    if (subtree == NULL) return;
-    subtree_node_count(subtree->left_operand, count);
-    *count += 1;
-    subtree_node_count(subtree->right_operand, count);
 }
 
 Ast_Node *parse_term(Token tk, Lexer *lex)
@@ -334,9 +359,11 @@ void parser(Ast *ast, Lexer *lex)
 
                     subtree_node_count(subtree, &count);
                     ast_push_subtree(ast, subtree);
+
                 } else if (t1.op.type == OP_MULT || t1.op.type == OP_DIV) {
                     lex->tp -= 1;
                     Ast_Node *val = parse_term(tk, lex);
+
                     subtree_node_count(val, &count);
                     ast_push_subtree(ast, val);
                 }
@@ -353,16 +380,17 @@ void parser(Ast *ast, Lexer *lex)
             } else if (tok.type == TYPE_OPEN_BRACKET) {
                 Token t = token_next(lex);
                 val = parse_expr(t, lex);    
+                if (val == NULL) EXIT;
 
             } else {
                 fprintf(stderr, "Error: in function `parser` unknown condition\n");
                 EXIT;
             }
 
-            if (val == NULL) EXIT;
+            count += 1; // its `opr`
+            subtree_node_count(val, &count);
 
             opr->right_operand = val;
-            subtree_node_count(val, &count);
             ast_push_subtree(ast, opr);
 
         } else if (tk.type == TYPE_OPEN_BRACKET) {
@@ -374,7 +402,7 @@ void parser(Ast *ast, Lexer *lex)
             ast_push_subtree(ast, subtree);
 
         } else if (tk.type == TYPE_CLOSE_BRACKET) {
-            continue;
+            token_next(lex);
         }
 
         ast->count += count;
