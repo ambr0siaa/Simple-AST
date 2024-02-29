@@ -119,11 +119,9 @@ void ast_clean(Ast_Node *node, size_t *node_count)
 Ast_Node *ast_node_create(Token tk)
 {
     Ast_Node *node = malloc(sizeof(Ast_Node));
-    
     node->token = tk;
     node->left_operand = NULL;
     node->right_operand = NULL;
-    
     return node;
 }
 
@@ -164,6 +162,7 @@ void subtree_node_count(Ast_Node *subtree, size_t *count)
 *   V: INT | FLOAT
 */
 
+
 Ast_Node *parse_expr(Token tk, Lexer *lex)
 {
     if (tk.type == TYPE_VALUE) {
@@ -187,6 +186,36 @@ Ast_Node *parse_expr(Token tk, Lexer *lex)
                         Token t1 = token_next(lex);
                         val2 = parse_expr(t1, lex);
 
+                        do {
+                            Token opr_tk = token_next(lex);
+                            if (opr_tk.type == TYPE_OPERATOR) {
+                                if (opr_tk.op.type == OP_MULT || opr_tk.op.type == OP_DIV) {
+                                    Ast_Node *opr_node = ast_node_create(opr_tk);
+                                    Ast_Node *subval;
+
+                                    Token tok = token_next(lex);
+                                    if (tok.type == TYPE_VALUE) {
+                                        subval = parse_term(tok, lex);
+
+                                    } else if (tok.type == TYPE_OPEN_BRACKET) {
+                                        tok = token_next(lex);
+                                        subval = parse_expr(tok, lex);
+                                    }
+
+                                    opr_node->left_operand = val2;
+                                    opr_node->right_operand = subval;
+                                    val2 = opr_node;
+
+                                } else {
+                                    lex->tp -= 1;
+                                    break;
+                                }
+                            } else {
+                                lex->tp -= 1;
+                                break;
+                            }
+                        } while(1);
+
                     } else if (v2.type == TYPE_VALUE) {
                         val2 = parse_term(v2, lex);
 
@@ -204,7 +233,7 @@ Ast_Node *parse_expr(Token tk, Lexer *lex)
             } else if (type == TYPE_OPEN_BRACKET) {
                 Token t1 = token_next(lex);
                 Ast_Node *subtree = parse_expr(t1, lex);
-
+                
                 if (subtree == NULL) EXIT;
                 return subtree;
 
@@ -295,7 +324,6 @@ Ast_Node *parse_expr(Token tk, Lexer *lex)
 Ast_Node *parse_term(Token tk, Lexer *lex)
 {   
     Ast_Node *val1 = ast_node_create(tk);  
-    Ast subtree = {0};
 
     do {
         Token_Type tk_type = token_peek(lex);
@@ -325,7 +353,7 @@ Ast_Node *parse_term(Token tk, Lexer *lex)
 
                 opr_node->left_operand = val1;
                 opr_node->right_operand = val2;
-                ast_push_subtree(&subtree, opr_node);
+                val1 = opr_node;
 
             } else {
                 lex->tp -= 1;
@@ -336,8 +364,7 @@ Ast_Node *parse_term(Token tk, Lexer *lex)
         }
     } while (1);
 
-    if (subtree.root == NULL) return val1;
-    else return subtree.root;
+    return val1;
 }
 
 void parser(Ast *ast, Lexer *lex)

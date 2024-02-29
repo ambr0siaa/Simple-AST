@@ -44,5 +44,6 @@ Ast_Node *ast_node_create(Token tk);
 Ast_Node *resolve_ast(Ast_Node *node);
 Ast_Node *parse_expr(Token tk, Lexer *lex);
 Ast_Node *parse_term(Token tk, Lexer *lex);
+Ast_Node *parse_sentence(Token tk, Lexer *lex);
 
 #endif // PARSER_H_
