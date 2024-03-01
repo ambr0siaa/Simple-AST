@@ -13,10 +13,12 @@ typedef enum {
     VAL_INT
 } Value_Type;
 
+typedef long long int i64_t;
+
 typedef struct {
     Value_Type type;
     union {
-        int64_t i64;
+        i64_t i64;
         double f64;
     };
 } Value;
@@ -24,7 +26,7 @@ typedef struct {
 #define VALUE_INT(val) (Value) { .type = VAL_INT, .i64 = (val) }
 #define VALUE_FLOAT(val) (Value) { .type = VAL_FLOAT, .f64 = (val) }
 
-// It's only for numbers
+// Variables can contain only numbers
 typedef struct {
     String_View name;
     Value val;
@@ -54,6 +56,7 @@ typedef struct {
 #define da_clean(da)        \
     do {                    \
         free((da)->items);  \
+        (da)->items = NULL; \
         (da)->count = 0;    \
         (da)->capacity = 0; \
     } while(0)

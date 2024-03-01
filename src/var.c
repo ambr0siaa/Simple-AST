@@ -1,4 +1,4 @@
-#include "./var.h"
+#include "../include/var.h"
 
 void var_clean(Var_List *vl) { da_clean(vl); }
 void var_push(Var_List *vl, Variable var) { da_append(vl, var); }

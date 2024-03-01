@@ -1,13 +1,10 @@
-#include "./lexer.h"
+#include "../include/lexer.h"
 
-Value tokenise_value(String_View sv, int mode)
+Value tokenise_value(String_View sv)
 {
-    int is_float;
+    int is_float = sv_is_float(sv);
 
-    if (mode == NONE_MODE) is_float = sv_is_float(sv);
-    else is_float = mode;
-
-    if (is_float == 1) {
+    if (is_float) {
         char *float_cstr = malloc(sizeof(char) * sv.count + 1);
         char *endptr = float_cstr; 
         memcpy(float_cstr, sv.data, sv.count);
@@ -40,7 +37,7 @@ Lexer lexer(String_View src_sv, Var_List *vl)
         Token tk;
         if (isdigit(src.data[0])) {
             String_View value = sv_cut_value(&src);
-            tk.val = tokenise_value(value, NONE_MODE);
+            tk.val = tokenise_value(value);
             tk.type = TYPE_VALUE;
             sv_cut_space_left(&src);
 
@@ -49,18 +46,18 @@ Lexer lexer(String_View src_sv, Var_List *vl)
                 case '(': tk.type = TYPE_OPEN_BRACKET;  break;
                 case ')': tk.type = TYPE_CLOSE_BRACKET; break;
 
-                case '/': tk.type = TYPE_OPERATOR; tk.op.type = OP_DIV;   break;
-                case '%': tk.type = TYPE_OPERATOR; tk.op.type = OP_MOD;   break;
-                case '+': tk.type = TYPE_OPERATOR; tk.op.type = OP_PLUS;  break;
-                case '*': tk.type = TYPE_OPERATOR; tk.op.type = OP_MULT;  break;
-                case '-': tk.type = TYPE_OPERATOR; tk.op.type = OP_MINUS; break;
+                case '/': tk.type = TYPE_OPERATOR;   break;
+                case '%': tk.type = TYPE_OPERATOR;   break;
+                case '+': tk.type = TYPE_OPERATOR;  break;
+                case '*': tk.type = TYPE_OPERATOR;  break;
+                case '-': tk.type = TYPE_OPERATOR; break;
 
                 default:
                     fprintf(stderr, "Error: unknown operator `%c`\n", src.data[0]);
                     EXIT;
             }
 
-            tk.op.operator = src.data[0];
+            tk.op = src.data[0];
             sv_cut_left(&src, 1);
             sv_cut_space_left(&src);
 
@@ -115,20 +112,20 @@ void print_token(Token tk)
             if (tk.val.type == VAL_FLOAT) {
                 printf("float: `%lf`\n", tk.val.f64);
             } else {
-                printf("int: `%ld`\n", tk.val.i64);
+                printf("int: `%lld`\n", tk.val.i64);
             }
             break;
         }
         case TYPE_OPERATOR: {
-            printf("opr: `%c`\n", tk.op.operator);
+            printf("opr: `%c`\n", tk.op);
             break;
         }
         case TYPE_OPEN_BRACKET: {
-            printf("open bracket: `%c`\n", tk.op.operator);
+            printf("open bracket: `%c`\n", tk.op);
             break;
         }
         case TYPE_CLOSE_BRACKET: {
-            printf("close bracket: `%c`\n", tk.op.operator);
+            printf("close bracket: `%c`\n", tk.op);
             break;
         }
         case TYPE_NONE:

@@ -1,21 +1,8 @@
-#include "./parser.h"
+#include "../include/parser.h"
 
 void print_node(Ast_Node *node)
 {
-    switch (node->token.type) {
-        case TYPE_VALUE:
-            if (node->token.val.type == VAL_FLOAT) {
-                printf("value: '%lf'\n", node->token.val.f64);
-            } else {
-                printf("value: '%ld'\n", node->token.val.i64);
-            }
-            break;
-        case TYPE_OPERATOR:
-            printf("opr: '%c'\n", node->token.op.operator);
-            break;
-        default:
-            break;
-    }
+    print_token(node->token);
 }
 
 void print_ast_root(Ast_Node *node)
@@ -60,30 +47,30 @@ Ast_Node *resolve_ast(Ast_Node *node)
             
         if (node->token.type == TYPE_OPERATOR) {
             char type;
+            Ast_Node *new_node = ast_node_create((Token) {.type = TYPE_VALUE });
             if (node->left_operand->token.val.type == VAL_FLOAT) {
                 type = 'f'; 
-                node->token.val.type = VAL_FLOAT;
+                new_node->token.val.type = VAL_FLOAT;
             } else {
                 type = 'i'; 
-                node->token.val.type = VAL_INT;
+                new_node->token.val.type = VAL_INT;
             } 
-            
-            node->token.type = TYPE_VALUE;
 
-            switch (node->token.op.operator) {
-                case '+': BINARY_OP(node, +, node->left_operand, node->right_operand, type); break;
-                case '*': BINARY_OP(node, *, node->left_operand, node->right_operand, type); break;
-                case '-': BINARY_OP(node, -, node->left_operand, node->right_operand, type); break;
-                case '/': BINARY_OP(node, /, node->left_operand, node->right_operand, type); break;
+            switch (node->token.op) {
+                case '+': BINARY_OP(new_node, +, node->left_operand, node->right_operand, type); break;
+                case '*': BINARY_OP(new_node, *, node->left_operand, node->right_operand, type); break;
+                case '-': BINARY_OP(new_node, -, node->left_operand, node->right_operand, type); break;
+                case '/': BINARY_OP(new_node, /, node->left_operand, node->right_operand, type); break;
                 default: {
-                    fprintf(stderr, "Error, unknown operator `%c`\n", node->token.op.operator);
+                    fprintf(stderr, "Error, unknown operator `%c`\n", node->token.op);
                     EXIT;
                 }
             }
 
             free(node->left_operand);
             free(node->right_operand);
-            return node;
+            free(node);
+            return new_node;
         }
     }
     return node;
@@ -176,9 +163,9 @@ Ast_Node *parse_expr(Token tk, Lexer *lex)
         do {
             type = token_peek(lex);
             if (type == TYPE_OPERATOR) {
-                Token op = token_next(lex);
-                if (op.op.type == OP_MINUS || op.op.type == OP_PLUS) {
-                    opr = ast_node_create(op);
+                Token _op = token_next(lex);
+                if (_op.op == '+' || _op.op == '-') {
+                    opr = ast_node_create(_op);
 
                     Token v2 = token_next(lex);
                     
@@ -189,7 +176,7 @@ Ast_Node *parse_expr(Token tk, Lexer *lex)
                         do {
                             Token opr_tk = token_next(lex);
                             if (opr_tk.type == TYPE_OPERATOR) {
-                                if (opr_tk.op.type == OP_MULT || opr_tk.op.type == OP_DIV) {
+                                if (opr_tk.op == '*' || opr_tk.op == '/') {
                                     Ast_Node *opr_node = ast_node_create(opr_tk);
                                     Ast_Node *subval;
 
@@ -333,7 +320,7 @@ Ast_Node *parse_term(Token tk, Lexer *lex)
             Ast_Node *val2;
             Token opr_tk = token_next(lex);
 
-            if (opr_tk.op.type == OP_MULT || opr_tk.op.type == OP_DIV) {
+            if (opr_tk.op == '*' || opr_tk.op == '/') {
                 Ast_Node *opr_node = ast_node_create(opr_tk);
                 Token t1 = token_next(lex);
 
@@ -378,7 +365,7 @@ void parser(Ast *ast, Lexer *lex)
             Token_Type type = token_peek(lex);
             if (type == TYPE_OPERATOR) {
                 Token t1 = token_next(lex);
-                if (t1.op.type == OP_MINUS || t1.op.type == OP_PLUS) {
+                if (t1.op == '+' || t1.op == '-') {
                     lex->tp -= 1;
 
                     Ast_Node *subtree = parse_expr(tk, lex);
@@ -387,7 +374,7 @@ void parser(Ast *ast, Lexer *lex)
                     subtree_node_count(subtree, &count);
                     ast_push_subtree(ast, subtree);
 
-                } else if (t1.op.type == OP_MULT || t1.op.type == OP_DIV) {
+                } else if (t1.op == '*' || t1.op == '/') {
                     lex->tp -= 1;
                     Ast_Node *val = parse_term(tk, lex);
 

@@ -1,3 +1,5 @@
+// This is custom string library for lexer
+
 #ifndef SV_H_
 #define SV_H_
 
@@ -11,6 +13,8 @@ typedef struct {
 
 #define SV_Fmt "%.*s"
 #define SV_Args(sv) (int) (sv).count, (sv).data
+// Usage to printing sv:
+// print(""SV_Fmt"\n", SV_Args(sv));
 
 String_View sv_div_by_next_symbol(String_View *sv);
 String_View sv_from_cstr(char *cstr);

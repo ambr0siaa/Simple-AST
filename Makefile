@@ -1,6 +1,10 @@
 CC = gcc
-SRC = parser.c lexer.c sv.c var.c
+TARGET = test
 CFLAGS = -Wall -Wextra
 
-main:
-	$(CC) main.c $(SRC) $(CFLAGS) -o main -g
+TARGET_PATH = ./tests/
+SRC_PATH = ./src/
+SRC = $(wildcard $(SRC_PATH)*.c)
+
+$(TARGET): $(SRC)
+	$(CC) $(TARGET_PATH)$(TARGET).c $(SRC) $(CFLAGS) -o $(TARGET)
