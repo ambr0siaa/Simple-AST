@@ -2,10 +2,7 @@
 
 int main(void)
 {
-    Ast ast = {0};
-    Lexer lex = {0};
     Var_List vl = {0};
-
     Variable arsenii = var_create("arsenii", VALUE_INT(3));
     var_push(&vl, arsenii);
 
@@ -17,8 +14,10 @@ int main(void)
     };
 
     for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
+        Ast ast = {0};
+
         printf("\n\n--------------------------- Test%zu ---------------------------\n\n", i);
-        lex = lexer(sv_from_cstr(tests[i]), &vl);
+        Lexer lex = lexer(sv_from_cstr(tests[i]), &vl);
         print_lex(&lex);
 
         parser(&ast, &lex);
@@ -28,11 +27,12 @@ int main(void)
 
         printf("Answer:\n\t");
         print_node(ast.root);
-        printf("\n\n--------------------------- Test%zuEnd ------------------------------\n\n", i);
+        printf("\n\n--------------------------- Test%zuEnd ------------------------------\n\n",i);
+        
+        ast_clean(ast.root, &ast.count);
+        lex_clean(&lex);
     }
     
-    ast_clean(ast.root, &ast.count);
-    lex_clean(&lex);
     var_clean(&vl);
     return 0;
 }
